@@ -1,0 +1,287 @@
+import javax.swing.*;       //high level GUI
+import java.awt.*;         //abstract window toolkit ,provies low level GUI and keyboard event handeling
+import java.awt.event.*;     //subpackage of awt,had keylistener-keytyped,keyreleased,keyreleased
+import java.util.*;
+
+public class MazeSolver extends JPanel implements KeyListener {      //inheritance,interface
+
+    // Grid size
+    private final int rows = 10, cols = 10;          //default size 10x10
+    private int[][] maze;
+
+    // Player & destination
+    private int playerX = 0, playerY = 0;
+    private int endX, endY;
+
+    // User trail
+    private boolean[][] userTrail;
+
+    // Solutions
+    private java.util.List<Point> closestSolution = new ArrayList<>();
+    private java.util.List<Point> shortestSolution = new ArrayList<>();
+
+    private boolean showClosest = false;
+    private boolean showShortest = false;
+    private boolean gameWon = false;   
+
+    // UI
+    private JPanel buttonPanel;
+    private JButton btnClosest, btnShortest, btnTryAgain, btnNewGame;
+
+    public MazeSolver() {
+        setLayout(new BorderLayout());           //arranges maze in center and buttons in south
+        setFocusable(true);            //sets panel to receive input from keyboard
+        addKeyListener(this);                  //connects panel to keypressed,key released and keytyped
+
+        setupButtons();               //arranges buttons
+        resetGame();                 //creates new maze and resets player position
+    }
+
+    //UI
+
+    private void setupButtons() {
+        buttonPanel = new JPanel(new GridLayout(2, 2, 10, 10));                  //2 rows 2 colums 10 horizontal and vertical gap   
+
+        btnClosest = new JButton("Show Closest Solution");                                        //creation of buttons
+        btnShortest = new JButton("Show Shortest Path");
+        btnTryAgain = new JButton("Try Again");
+        btnNewGame = new JButton("New Game");
+
+        buttonPanel.add(btnClosest);                                                                   //adding buttons to panel
+        buttonPanel.add(btnShortest);
+        buttonPanel.add(btnTryAgain);
+        buttonPanel.add(btnNewGame);
+
+        add(buttonPanel, BorderLayout.SOUTH);                                                       //adding this panel to window--South is the bottom
+
+        btnClosest.addActionListener(e -> {                                                         //functions for each of the buttons
+            computeClosestSolution();
+            showClosest = true; 
+            showShortest = false;
+            repaint();
+        });
+
+        btnShortest.addActionListener(e -> {
+            computeShortestSolution();
+            showShortest = true;
+            showClosest = false;
+            repaint();
+        });
+
+        btnTryAgain.addActionListener(e -> resetPlayer());                                      
+        btnNewGame.addActionListener(e -> resetGame());
+    }
+
+    //Always solvable maze generation
+
+    private void generateMaze() {                                  
+        maze = new int[rows][cols];                                    //fresh grid creation
+        userTrail = new boolean[rows][cols];
+
+        for (int i = 0; i < rows; i++)                                //1--wall 0--path
+            Arrays.fill(maze[i], 1);
+
+        playerX = playerY = 0;
+        endX = rows - 1;
+        endY = cols - 1;
+
+        Random r = new Random();
+
+        int x = 0, y = 0;
+        maze[x][y] = 0;
+
+        while (x != endX || y != endY) {                                              //zero upto end random maze generation
+            if (x < endX && (y == endY || r.nextBoolean()))                           //if already last column go down ,prevents going past boundary
+                x++;                                                                 //down  never up
+            else
+                y++;                                                                 //right never left
+            maze[x][y] = 0;                                                          //creating path
+        }
+ 
+        for (int i = 0; i < rows; i++)                                                  //open random walls to create randomness
+            for (int j = 0; j < cols; j++)
+                if (maze[i][j] == 1 && r.nextInt(3) != 0)                            
+                    maze[i][j] = 0;
+    }
+
+    //solutions
+
+    private void computeClosestSolution() {
+        closestSolution.clear();                                  //clears any previously stored paths
+        bfs(true, closestSolution);                   //calls bfs with true mode to user bias-closest shortest distance
+    } 
+
+    private void computeShortestSolution() {
+        shortestSolution.clear();                                //clears any previously stored solutions
+        bfs(false, shortestSolution);                //calls bfs with false mode to user bias-shortest distance
+    }
+//BFS-bias towards user
+    private void bfs(boolean biasToUser, java.util.List<Point> result) {
+        boolean[][] visited = new boolean[rows][cols];                            //visited
+        Point[][] parent = new Point[rows][cols];                                  //stores the path of the user
+
+        Queue<Point> q = new LinkedList<>();
+        q.add(new Point(0, 0));                  //adding source vertex to the queue
+        visited[0][0] = true;                         //setting true for source vertex
+
+        int[] dx = {-1, 1, 0, 0};                     //left right movement
+        int[] dy = {0, 0, -1, 1};                     //up down movement
+
+        while (!q.isEmpty()) {
+            Point p = q.poll();                                       //if queue is empty
+            if (p.x == endX && p.y == endY) break;
+
+            java.util.List<Point> neighbors = new ArrayList<>();
+
+            for (int i = 0; i < 4; i++) {
+                int nx = p.x + dx[i];
+                int ny = p.y + dy[i];
+                if (nx >= 0 && ny >= 0 && nx < rows && ny < cols &&         //within the maze,not visited and the visiting box is a path not a block
+                        maze[nx][ny] == 0 && !visited[nx][ny]) {
+                    neighbors.add(new Point(nx, ny));                      //then add the point to the queue for bfs
+                }
+            }
+
+            if (biasToUser) {
+                neighbors.sort(Comparator.comparingInt(                     //collects all valid blocks and adds them to bfs queue
+                        n -> distanceToTrail(n.x, n.y)                       //how far the point n is from user to trail
+                ));
+            }
+
+            for (Point n : neighbors) {
+                visited[n.x][n.y] = true;
+                parent[n.x][n.y] = p;
+                q.add(n);
+            }
+        }
+
+        Point cur = new Point(endX, endY);                                  //tracing backwards,storing the end points values 
+        while (cur != null) {                                               //following parent link backwards
+            result.add(cur);
+            cur = parent[cur.x][cur.y];
+        }
+        Collections.reverse(result);                                        //reverses the order of the results since it was stored in reverse order
+    }
+
+    private int distanceToTrail(int x, int y) {                                          //Manhatten distance calculation:(2,3),(5,6)->|2-5|+|3-6| abs value
+            int min = Integer.MAX_VALUE;
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                if (userTrail[i][j])
+                    min = Math.min(min, Math.abs(x - i) + Math.abs(y - j));
+        return min == Integer.MAX_VALUE ? 100 : min;
+    }
+
+    //game states
+
+    private void resetPlayer() {
+        playerX = playerY = 0;
+        userTrail = new boolean[rows][cols];
+        showClosest = showShortest = false;
+        gameWon = false;                      // resets win state
+        repaint();
+        requestFocusInWindow();
+    }
+
+    private void resetGame() {
+        generateMaze();                          //new maze is generated
+        resetPlayer();                          //resets the position of the player and all the other variables
+    }
+
+    //Drawing
+
+    protected void paintComponent(Graphics g) {                    //overriding --Polymorphism
+        super.paintComponent(g);
+
+        int panelHeight = getHeight() - buttonPanel.getHeight();             //sets panel height by leaving space for buttons
+        int cellW = getWidth() / cols;
+        int cellH = panelHeight / rows;
+        int cellSize = Math.min(cellW, cellH);                            //sets cell size to square
+
+        int xOffset = (getWidth() - cellSize * cols) / 2;
+        int yOffset = (panelHeight - cellSize * rows) / 2;
+
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++) {
+                g.setColor(maze[i][j] == 1 ? Color.DARK_GRAY : Color.WHITE);        //colours for paths and blocks
+                g.fillRect(xOffset + j * cellSize,
+                           yOffset + i * cellSize,
+                           cellSize, cellSize);
+                g.setColor(Color.LIGHT_GRAY);
+                g.drawRect(xOffset + j * cellSize,
+                           yOffset + i * cellSize,
+                           cellSize, cellSize);
+            }
+
+        if (showClosest) {                                             //while showing closest solution
+            g.setColor(new Color(173, 216, 230));
+            for (Point p : closestSolution)
+                g.fillRect(xOffset + p.y * cellSize,
+                           yOffset + p.x * cellSize,
+                           cellSize, cellSize);
+        }
+
+        if (showShortest) {                                 //while showing shortest solution
+            g.setColor(new Color(180, 238, 180));
+            for (Point p : shortestSolution)
+                g.fillRect(xOffset + p.y * cellSize,
+                           yOffset + p.x * cellSize,
+                           cellSize, cellSize);
+        }
+
+        g.setColor(Color.RED);                                     //destination colour
+        g.fillOval(xOffset + endY * cellSize + cellSize / 4,
+                   yOffset + endX * cellSize + cellSize / 4,
+                   cellSize / 2, cellSize / 2);
+
+        g.setColor(Color.GREEN);                                     //starting colour
+        g.fillOval(xOffset + playerY * cellSize + cellSize / 4,
+                   yOffset + playerX * cellSize + cellSize / 4,
+                   cellSize / 2, cellSize / 2);
+    }
+
+    //Movement
+
+    public void keyPressed(KeyEvent e) {
+        if (gameWon) return;   //  prevents movement after win
+
+        int nx = playerX, ny = playerY;
+
+        if (e.getKeyCode() == KeyEvent.VK_UP) nx--;   //checks for up down right or left movement
+        if (e.getKeyCode() == KeyEvent.VK_DOWN) nx++;
+        if (e.getKeyCode() == KeyEvent.VK_LEFT) ny--;
+        if (e.getKeyCode() == KeyEvent.VK_RIGHT) ny++;
+
+        if (nx >= 0 && ny >= 0 && nx < rows && ny < cols && maze[nx][ny] == 0) {          //sets user trail
+            playerX = nx;
+            playerY = ny;
+            userTrail[playerX][playerY] = true;
+            repaint();
+        }
+
+        // ✅ WIN CHECK
+        if (playerX == endX && playerY == endY && !gameWon) {        //check for victory
+            gameWon = true; 
+            JOptionPane.showMessageDialog(
+                    this,
+                    "🎉 YOU WON!!!",
+                    "Victory",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+        }
+    }
+
+    public void keyReleased(KeyEvent e) {}
+    public void keyTyped(KeyEvent e) {}             //swing expects us to use all 3 methods or else code wont compile
+
+    /* ---------------- MAIN ---------------- */
+
+    public static void main(String[] args) {
+        JFrame frame = new JFrame("Maze Solver Game");           //empty panel/frame in swing,we set the title name as Maze Solver Game
+        MazeSolver game = new MazeSolver();
+        frame.add(game);                                               //added the game to the empty frame
+        frame.setSize(900, 900);                         //size of the window
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);           //without this,even when the game window is closed the program keeps running
+        frame.setVisible(true);                                      //displays the window on the screen
+    }
+}

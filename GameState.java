@@ -15,7 +15,7 @@ public class GameState {
         player = maze.getStart();
         userTrail = new boolean[maze.getRows()][maze.getCols()];
         userTrail[player.x][player.y] = true;
-        startedAt = maze.getCreatedAt();
+        startedAt = System.currentTimeMillis();
     }
 
     /** Returns the current player position. */
